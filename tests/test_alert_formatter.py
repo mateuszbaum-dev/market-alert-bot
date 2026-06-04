@@ -8,7 +8,10 @@ def test_high_alert_with_gpt_result() -> None:
         {"score": 5, "level": "MEDIUM", "reasons": ["Mentions earnings"]},
         {
             "impact_level": "HIGH",
-            "confidence": 91,
+            "impact_score": 8,
+            "market_direction": "BULLISH",
+            "direction_confidence": 76,
+            "event_probability": 72,
             "category": "earnings",
             "reasoning_summary": "Relevant for market monitoring.",
             "should_notify": True,
@@ -20,9 +23,12 @@ def test_high_alert_with_gpt_result() -> None:
     assert "Impact Level: HIGH" in message
     assert "Rule Score: 5" in message
     assert "- Mentions earnings" in message
-    assert "GPT Category: earnings" in message
-    assert "GPT Confidence: 91" in message
-    assert "GPT Summary: Relevant for market monitoring." in message
+    assert "Impact Score: 8/10" in message
+    assert "Direction: BULLISH" in message
+    assert "Direction Confidence: 76%" in message
+    assert "Reaction Probability: 72%" in message
+    assert "Category: earnings" in message
+    assert "Reasoning Summary: Relevant for market monitoring." in message
 
 
 def test_medium_alert_without_gpt_result() -> None:
@@ -34,7 +40,7 @@ def test_medium_alert_without_gpt_result() -> None:
     assert message.startswith("\u26a0\ufe0f Market Monitoring Alert")
     assert "Impact Level: MEDIUM" in message
     assert "- SEC filing event: 8-K" in message
-    assert "GPT Category:" not in message
+    assert "Direction:" not in message
 
 
 def test_missing_url_does_not_crash() -> None:

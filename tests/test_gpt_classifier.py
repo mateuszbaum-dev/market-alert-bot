@@ -15,31 +15,18 @@ def test_missing_api_key_raises_value_error(monkeypatch) -> None:
         gpt_classifier.classify_event_with_gpt(_event(), _rule_score())
 
 
-def test_successful_valid_json_response(monkeypatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("OPENAI_MODEL", "test-model")
-    monkeypatch.setattr(gpt_classifier, "load_dotenv", lambda: None)
-    calls = []
+def test_successful_valid_gpt_response_with_all_new_fields(monkeypatch) -> None:
     payload = {
         "impact_level": "HIGH",
-        "confidence": 87,
+        "impact_score": 8,
+        "market_direction": "BULLISH",
+        "direction_confidence": 76,
+        "event_probability": 72,
         "category": "earnings",
-        "reasoning_summary": "The event may matter for market monitoring.",
+        "reasoning_summary": "The event may be relevant for monitoring due to earnings context.",
         "should_notify": True,
     }
-
-    class FakeOpenAI:
-        def __init__(self, api_key, timeout) -> None:
-            calls.append({"api_key": api_key, "timeout": timeout})
-            self.chat = SimpleNamespace(
-                completions=SimpleNamespace(create=self.create),
-            )
-
-        def create(self, **kwargs):
-            calls.append(kwargs)
-            return _response(json.dumps(payload))
-
-    monkeypatch.setattr(gpt_classifier, "OpenAI", FakeOpenAI)
+    calls = _mock_openai(monkeypatch, payload)
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score())
 
@@ -60,52 +47,111 @@ def test_successful_valid_json_response(monkeypatch) -> None:
     }
 
 
-def test_invalid_json_returns_rule_based_fallback(monkeypatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setattr(gpt_classifier, "load_dotenv", lambda: None)
-
-    class FakeOpenAI:
-        def __init__(self, api_key, timeout) -> None:
-            self.chat = SimpleNamespace(
-                completions=SimpleNamespace(create=lambda **kwargs: _response("not json")),
-            )
-
-    monkeypatch.setattr(gpt_classifier, "OpenAI", FakeOpenAI)
+def test_invalid_impact_score_returns_fallback(monkeypatch) -> None:
+    payload = _valid_payload()
+    payload["impact_score"] = 11
+    _mock_openai(monkeypatch, payload)
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
 
-    assert result == {
-        "impact_level": "HIGH",
-        "confidence": 50,
-        "category": "rule_based_fallback",
-        "reasoning_summary": "GPT classification failed; using rule-based score.",
-        "should_notify": True,
-    }
+    assert result == _fallback(score_level="HIGH", impact_score=6, event_probability=50, should_notify=True)
+
+
+def test_invalid_direction_confidence_returns_fallback(monkeypatch) -> None:
+    payload = _valid_payload()
+    payload["direction_confidence"] = -1
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=5, level="MEDIUM"))
+
+    assert result == _fallback(score_level="MEDIUM", impact_score=4, event_probability=35, should_notify=False)
+
+
+def test_invalid_event_probability_returns_fallback(monkeypatch) -> None:
+    payload = _valid_payload()
+    payload["event_probability"] = 101
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=2, level="LOW"))
+
+    assert result == _fallback(score_level="LOW", impact_score=2, event_probability=20, should_notify=False)
+
+
+def test_invalid_market_direction_returns_fallback(monkeypatch) -> None:
+    payload = _valid_payload()
+    payload["market_direction"] = "POSITIVE"
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result["market_direction"] == "UNCLEAR"
+    assert result["category"] == "rule_based_fallback"
+    assert result["should_notify"] is True
+
+
+def test_invalid_json_returns_rule_based_fallback(monkeypatch) -> None:
+    _mock_openai(monkeypatch, "not json", raw_content=True)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result == _fallback(score_level="HIGH", impact_score=6, event_probability=50, should_notify=True)
 
 
 def test_api_failure_returns_rule_based_fallback(monkeypatch) -> None:
+    _mock_openai(monkeypatch, RuntimeError("api failed"))
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=5, level="MEDIUM"))
+
+    assert result == _fallback(score_level="MEDIUM", impact_score=4, event_probability=35, should_notify=False)
+
+
+def _mock_openai(monkeypatch, payload, raw_content: bool = False) -> list[dict]:
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "test-model")
     monkeypatch.setattr(gpt_classifier, "load_dotenv", lambda: None)
+    calls = []
 
     class FakeOpenAI:
         def __init__(self, api_key, timeout) -> None:
+            calls.append({"api_key": api_key, "timeout": timeout})
             self.chat = SimpleNamespace(
                 completions=SimpleNamespace(create=self.create),
             )
 
         def create(self, **kwargs):
-            raise RuntimeError("api failed")
+            calls.append(kwargs)
+            if isinstance(payload, Exception):
+                raise payload
+            content = payload if raw_content else json.dumps(payload)
+            return _response(content)
 
     monkeypatch.setattr(gpt_classifier, "OpenAI", FakeOpenAI)
+    return calls
 
-    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=5, level="MEDIUM"))
 
-    assert result == {
-        "impact_level": "MEDIUM",
-        "confidence": 50,
+def _valid_payload() -> dict:
+    return {
+        "impact_level": "HIGH",
+        "impact_score": 8,
+        "market_direction": "BULLISH",
+        "direction_confidence": 76,
+        "event_probability": 72,
+        "category": "earnings",
+        "reasoning_summary": "The event may be relevant for monitoring due to earnings context.",
+        "should_notify": True,
+    }
+
+
+def _fallback(score_level: str, impact_score: int, event_probability: int, should_notify: bool) -> dict:
+    return {
+        "impact_level": score_level,
+        "impact_score": impact_score,
+        "market_direction": "UNCLEAR",
+        "direction_confidence": 40,
+        "event_probability": event_probability,
         "category": "rule_based_fallback",
-        "reasoning_summary": "GPT classification failed; using rule-based score.",
-        "should_notify": False,
+        "reasoning_summary": "GPT classification failed or returned invalid data; using rule-based score.",
+        "should_notify": should_notify,
     }
 
 

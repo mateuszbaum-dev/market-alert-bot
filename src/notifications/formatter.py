@@ -38,9 +38,12 @@ def format_market_alert(event: MarketEvent, rule_score: dict, gpt_result: dict |
         lines.extend(
             [
                 "",
-                f"GPT Category: {_safe_text(gpt_result.get('category'))}",
-                f"GPT Confidence: {gpt_result.get('confidence', 'N/A')}",
-                f"GPT Summary: {_safe_text(gpt_result.get('reasoning_summary'))}",
+                f"Impact Score: {gpt_result.get('impact_score', 'N/A')}/10",
+                f"Direction: {_safe_text(gpt_result.get('market_direction'))}",
+                f"Direction Confidence: {gpt_result.get('direction_confidence', 'N/A')}%",
+                f"Reaction Probability: {gpt_result.get('event_probability', 'N/A')}%",
+                f"Category: {_safe_text(gpt_result.get('category'))}",
+                f"Reasoning Summary: {_safe_text(gpt_result.get('reasoning_summary'))}",
             ]
         )
 

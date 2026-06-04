@@ -69,9 +69,16 @@ Market events can be scored with deterministic rules in `src/scoring/rules.py`. 
 
 ## GPT Classifier
 
-The optional GPT classifier in `src/scoring/gpt_classifier.py` can add a compact market-monitoring classification to a scored `MarketEvent`. It sends only the normalized event fields and rule score, asks for JSON output, and falls back to the rule-based score if the API call fails.
+The optional GPT classifier in `src/scoring/gpt_classifier.py` can add a compact market-monitoring classification to a scored `MarketEvent`. It sends only the normalized event fields and rule score, asks for JSON output, and falls back to the rule-based score if the API call fails or returns invalid data.
 
-This tool is for market monitoring only. It is not financial advice and must not be used as a recommendation to buy or sell securities.
+The classifier returns:
+
+- `impact_score`: a 1-10 monitoring estimate of possible market impact.
+- `market_direction`: `BULLISH`, `BEARISH`, `NEUTRAL`, or `UNCLEAR`.
+- `direction_confidence`: 0-100 confidence in the directional classification.
+- `event_probability`: 0-100 estimate that the event may cause a noticeable market reaction.
+
+These are AI-generated monitoring estimates, not predictions. This tool is for market monitoring only. It is not financial advice and must not be used as a recommendation to buy, sell, hold, short, or trade securities.
 
 ## Alert Formatting
 
@@ -89,9 +96,12 @@ Rule Score: 5
 Rule Reasons:
 - Mentions earnings
 
-GPT Category: earnings
-GPT Confidence: 91
-GPT Summary: Relevant for market monitoring.
+Impact Score: 8/10
+Direction: BULLISH
+Direction Confidence: 76%
+Reaction Probability: 72%
+Category: earnings
+Reasoning Summary: Relevant for market monitoring.
 
 Link: https://example.com/aapl
 

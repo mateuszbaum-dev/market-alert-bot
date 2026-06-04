@@ -10,15 +10,20 @@ from openai import OpenAI
 from src.models.event import MarketEvent
 
 ImpactLevel = Literal["LOW", "MEDIUM", "HIGH"]
+MarketDirection = Literal["BULLISH", "BEARISH", "NEUTRAL", "UNCLEAR"]
 
 DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
 OPENAI_TIMEOUT_SECONDS = 20
 VALID_IMPACT_LEVELS = {"LOW", "MEDIUM", "HIGH"}
+VALID_MARKET_DIRECTIONS = {"BULLISH", "BEARISH", "NEUTRAL", "UNCLEAR"}
 
 
 class GptClassification(TypedDict):
     impact_level: ImpactLevel
-    confidence: int
+    impact_score: int
+    market_direction: MarketDirection
+    direction_confidence: int
+    event_probability: int
     category: str
     reasoning_summary: str
     should_notify: bool
@@ -41,9 +46,12 @@ def classify_event_with_gpt(event: MarketEvent, rule_score: dict) -> GptClassifi
                 {
                     "role": "system",
                     "content": (
-                        "Classify market-monitoring relevance. Do not provide investment advice. "
-                        "Do not recommend buying or selling. Return only valid JSON with keys: "
-                        "impact_level, confidence, category, reasoning_summary, should_notify."
+                        "Classify this event for market monitoring only. Do not provide investment "
+                        "advice. Do not recommend buying, selling, holding, shorting, or trading. "
+                        "Do not predict exact price movement or claim certainty. Be conservative "
+                        "when information is vague. Return only valid JSON with exactly these keys: "
+                        "impact_level, impact_score, market_direction, direction_confidence, "
+                        "event_probability, category, reasoning_summary, should_notify."
                     ),
                 },
                 {
@@ -53,7 +61,7 @@ def classify_event_with_gpt(event: MarketEvent, rule_score: dict) -> GptClassifi
             ],
         )
         content = response.choices[0].message.content or ""
-        return _normalize_classification(json.loads(content), rule_score)
+        return _validate_classification(json.loads(content))
     except Exception:
         return _fallback_classification(rule_score)
 
@@ -70,43 +78,97 @@ def _compact_event_payload(event: MarketEvent, rule_score: dict) -> dict[str, An
     }
 
 
-def _normalize_classification(payload: dict[str, Any], rule_score: dict) -> GptClassification:
-    impact_level = str(payload.get("impact_level", rule_score.get("level", "LOW"))).upper()
-    if impact_level not in VALID_IMPACT_LEVELS:
-        impact_level = str(rule_score.get("level", "LOW")).upper()
-    if impact_level not in VALID_IMPACT_LEVELS:
-        impact_level = "LOW"
+def _validate_classification(payload: Any) -> GptClassification:
+    if not isinstance(payload, dict):
+        raise ValueError("GPT classification must be a JSON object")
+
+    impact_level = _required_choice(payload, "impact_level", VALID_IMPACT_LEVELS)
+    market_direction = _required_choice(payload, "market_direction", VALID_MARKET_DIRECTIONS)
 
     return {
         "impact_level": impact_level,  # type: ignore[typeddict-item]
-        "confidence": _clamp_int(payload.get("confidence", 50), minimum=0, maximum=100),
-        "category": str(payload.get("category", "market_monitoring")),
-        "reasoning_summary": str(payload.get("reasoning_summary", "")),
-        "should_notify": _coerce_bool(payload.get("should_notify", rule_score.get("score", 0) >= 6)),
+        "impact_score": _required_int(payload, "impact_score", minimum=1, maximum=10),
+        "market_direction": market_direction,  # type: ignore[typeddict-item]
+        "direction_confidence": _required_int(payload, "direction_confidence", minimum=0, maximum=100),
+        "event_probability": _required_int(payload, "event_probability", minimum=0, maximum=100),
+        "category": _required_text(payload, "category"),
+        "reasoning_summary": _required_text(payload, "reasoning_summary"),
+        "should_notify": _required_bool(payload, "should_notify"),
     }
 
 
 def _fallback_classification(rule_score: dict) -> GptClassification:
+    rule_score_value = _rule_score_value(rule_score)
     return {
-        "impact_level": str(rule_score.get("level", "LOW")).upper(),  # type: ignore[typeddict-item]
-        "confidence": 50,
+        "impact_level": _rule_level(rule_score),  # type: ignore[typeddict-item]
+        "impact_score": _fallback_impact_score(rule_score_value),
+        "market_direction": "UNCLEAR",
+        "direction_confidence": 40,
+        "event_probability": _fallback_event_probability(rule_score_value),
         "category": "rule_based_fallback",
-        "reasoning_summary": "GPT classification failed; using rule-based score.",
-        "should_notify": int(rule_score.get("score", 0)) >= 6,
+        "reasoning_summary": "GPT classification failed or returned invalid data; using rule-based score.",
+        "should_notify": rule_score_value >= 6,
     }
 
 
-def _clamp_int(value: Any, minimum: int, maximum: int) -> int:
+def _required_choice(payload: dict[str, Any], key: str, valid_values: set[str]) -> str:
+    if key not in payload:
+        raise ValueError(f"Missing required GPT field: {key}")
+    value = str(payload[key]).upper()
+    if value not in valid_values:
+        raise ValueError(f"Invalid GPT field: {key}")
+    return value
+
+
+def _required_int(payload: dict[str, Any], key: str, minimum: int, maximum: int) -> int:
+    if key not in payload or isinstance(payload[key], bool) or not isinstance(payload[key], int):
+        raise ValueError(f"Missing or invalid GPT integer field: {key}")
+    value = payload[key]
+    if value < minimum or value > maximum:
+        raise ValueError(f"GPT integer field out of range: {key}")
+    return value
+
+
+def _required_text(payload: dict[str, Any], key: str) -> str:
+    if key not in payload:
+        raise ValueError(f"Missing required GPT text field: {key}")
+    value = str(payload[key]).strip()
+    if not value:
+        raise ValueError(f"Empty GPT text field: {key}")
+    return value
+
+
+def _required_bool(payload: dict[str, Any], key: str) -> bool:
+    if key not in payload or not isinstance(payload[key], bool):
+        raise ValueError(f"Missing or invalid GPT boolean field: {key}")
+    return payload[key]
+
+
+def _rule_score_value(rule_score: dict) -> int:
     try:
-        number = int(value)
+        return int(rule_score.get("score", 0))
     except (TypeError, ValueError):
-        number = minimum
-    return max(minimum, min(maximum, number))
+        return 0
 
 
-def _coerce_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes"}
-    return bool(value)
+def _rule_level(rule_score: dict) -> str:
+    level = str(rule_score.get("level", "LOW")).upper()
+    if level in VALID_IMPACT_LEVELS:
+        return level
+    return "LOW"
+
+
+def _fallback_impact_score(rule_score_value: int) -> int:
+    if rule_score_value >= 6:
+        return 6
+    if rule_score_value >= 3:
+        return 4
+    return 2
+
+
+def _fallback_event_probability(rule_score_value: int) -> int:
+    if rule_score_value >= 6:
+        return 50
+    if rule_score_value >= 3:
+        return 35
+    return 20
