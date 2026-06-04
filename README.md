@@ -73,6 +73,31 @@ The optional GPT classifier in `src/scoring/gpt_classifier.py` can add a compact
 
 This tool is for market monitoring only. It is not financial advice and must not be used as a recommendation to buy or sell securities.
 
+## Alert Formatting
+
+Telegram alert messages are formatted as plain text to avoid parse errors. Example:
+
+```text
+🚨 Market Monitoring Alert
+
+Symbol: AAPL
+Source: finnhub
+Event Type: company_news
+Title: Apple reports earnings
+Impact Level: HIGH
+Rule Score: 5
+Rule Reasons:
+- Mentions earnings
+
+GPT Category: earnings
+GPT Confidence: 91
+GPT Summary: Relevant for market monitoring.
+
+Link: https://example.com/aapl
+
+Monitoring alert only. Not financial advice.
+```
+
 ## Running Tests
 
 ```powershell

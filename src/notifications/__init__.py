@@ -1,3 +1,5 @@
-"""Notification interfaces for future alert channels."""
+"""Notification helpers for market alerts."""
 
-__all__: list[str] = []
+from .formatter import format_market_alert
+
+__all__ = ["format_market_alert"]
