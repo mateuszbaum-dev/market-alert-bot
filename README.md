@@ -2,7 +2,7 @@
 
 Market Alert Bot is a Python 3.11+ MVP for monitoring a configurable market watchlist and preparing future alert workflows.
 
-This first version focuses on clean project structure, configuration loading, SQLite alert deduplication, and test setup. External data providers, scoring logic, and notification delivery are intentionally left as placeholders for later implementation.
+This first version focuses on clean project structure, configuration loading, Finnhub company news, rule-based scoring, optional GPT classification, SQLite alert deduplication, and test setup. Notification delivery is intentionally left as a placeholder for later implementation.
 
 ## Project Structure
 
@@ -39,6 +39,11 @@ Configuration is loaded from environment variables, with optional `.env` support
 | `WATCHLIST_PATH` | No | Defaults to `watchlist.yaml`. |
 | `ALERT_DB_PATH` | No | Defaults to `alerts.db`. Stores sent alert records for deduplication. |
 | `FINNHUB_API_KEY` | For Finnhub | API key used by the Finnhub company news provider. |
+| `OPENAI_API_KEY` | For GPT classifier | API key used for AI event classification. |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4.1-mini`. |
+| `USE_AI` | No | Defaults to `true` in the example config. |
+| `AI_THRESHOLD` | No | Suggested minimum rule score before GPT classification. |
+| `MAX_GPT_CALLS_PER_RUN` | No | Suggested cap for GPT calls in one run. |
 
 ## Watchlist Format
 
@@ -61,6 +66,12 @@ The Finnhub provider fetches company news and normalizes every valid article int
 ## Rule-Based Scoring
 
 Market events can be scored with deterministic rules in `src/scoring/rules.py`. The scorer returns a numeric score, a `LOW`, `MEDIUM`, or `HIGH` level, and human-readable reasons explaining which rules matched.
+
+## GPT Classifier
+
+The optional GPT classifier in `src/scoring/gpt_classifier.py` can add a compact market-monitoring classification to a scored `MarketEvent`. It sends only the normalized event fields and rule score, asks for JSON output, and falls back to the rule-based score if the API call fails.
+
+This tool is for market monitoring only. It is not financial advice and must not be used as a recommendation to buy or sell securities.
 
 ## Running Tests
 
