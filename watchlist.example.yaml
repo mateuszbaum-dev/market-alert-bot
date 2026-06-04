@@ -1,0 +1,14 @@
+companies:
+  - name: NVIDIA
+    ticker: NVDA
+    cik: "0001045810"
+    keywords:
+      - guidance
+      - data center
+
+  - name: Tesla
+    ticker: TSLA
+    cik: "0001318605"
+    keywords:
+      - deliveries
+      - recall
