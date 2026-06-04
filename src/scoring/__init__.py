@@ -1,3 +1,5 @@
-"""Scoring interfaces for future alert rules."""
+"""Scoring helpers for market events."""
 
-__all__: list[str] = []
+from .rules import score_event
+
+__all__ = ["score_event"]

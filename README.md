@@ -58,6 +58,10 @@ All future providers should normalize incoming data into the `MarketEvent` datac
 
 The Finnhub provider fetches company news and normalizes every valid article into `MarketEvent`. To use it, create a Finnhub API key and set `FINNHUB_API_KEY` in `.env`.
 
+## Rule-Based Scoring
+
+Market events can be scored with deterministic rules in `src/scoring/rules.py`. The scorer returns a numeric score, a `LOW`, `MEDIUM`, or `HIGH` level, and human-readable reasons explaining which rules matched.
+
 ## Running Tests
 
 ```powershell
