@@ -98,7 +98,73 @@ def test_gpt_limit_is_respected(tmp_path, monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     assert stats["gpt_calls_used"] == 1
     assert len(gpt_calls) == 1
-    assert "MAX_GPT_CALLS_PER_RUN reached" in captured.out
+    assert "Skipped alert because GPT limit was reached and GPT analysis is required." in captured.out
+
+
+def test_use_ai_true_and_gpt_limit_reached_skips_alert(tmp_path, monkeypatch, capsys) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("USE_AI", "true")
+    monkeypatch.setenv("AI_THRESHOLD", "4")
+    monkeypatch.setenv("MAX_GPT_CALLS_PER_RUN", "0")
+    _set_storage(monkeypatch, was_sent=False)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
+    send_calls = []
+    monkeypatch.setattr(main_module, "send_telegram_message", lambda message: send_calls.append(message) or True)
+
+    stats = main_module.run_pipeline()
+
+    captured = capsys.readouterr()
+    assert stats["gpt_calls_used"] == 0
+    assert stats["alerts"] == 0
+    assert stats["alerts_skipped"] == 1
+    assert send_calls == []
+    assert "Skipped alert because GPT limit was reached and GPT analysis is required." in captured.out
+
+
+def test_use_ai_true_and_gpt_result_alert_includes_market_direction(tmp_path, monkeypatch) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("USE_AI", "true")
+    monkeypatch.setenv("AI_THRESHOLD", "4")
+    _set_storage(monkeypatch, was_sent=False)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
+    monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: _gpt_result(direction="BULLISH"))
+    sent_messages = []
+    monkeypatch.setattr(main_module, "send_telegram_message", lambda message: sent_messages.append(message) or True)
+
+    stats = main_module.run_pipeline()
+
+    assert stats["alerts_sent"] == 1
+    assert len(sent_messages) == 1
+    assert "Direction: \U0001f7e2 BULLISH" in sent_messages[0]
+    assert "Impact: 7/10" in sent_messages[0]
+    assert "Direction confidence: 40%" in sent_messages[0]
+    assert "Reaction probability: 50%" in sent_messages[0]
+
+
+def test_use_ai_false_rule_based_alert_can_still_be_sent(tmp_path, monkeypatch) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("USE_AI", "false")
+    mark_calls = []
+    _set_storage(monkeypatch, was_sent=False, mark_calls=mark_calls)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
+    sent_messages = []
+    monkeypatch.setattr(main_module, "send_telegram_message", lambda message: sent_messages.append(message) or True)
+    gpt_calls = []
+    monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: gpt_calls.append((event, score)))
+
+    stats = main_module.run_pipeline()
+
+    assert stats["alerts_sent"] == 1
+    assert mark_calls == [("event-AAPL", "AAPL", "test", "AAPL earnings")]
+    assert gpt_calls == []
+    assert "Rule score: 6" in sent_messages[0]
+    assert "Direction:" not in sent_messages[0]
 
 
 def test_telegram_send_success_marks_alert_as_sent(tmp_path, monkeypatch) -> None:
@@ -209,11 +275,11 @@ def _rule_score(score: int, level: str) -> dict:
     return {"score": score, "level": level, "reasons": ["Test reason"]}
 
 
-def _gpt_result() -> dict:
+def _gpt_result(direction: str = "UNCLEAR") -> dict:
     return {
         "impact_level": "HIGH",
         "impact_score": 7,
-        "market_direction": "UNCLEAR",
+        "market_direction": direction,
         "direction_confidence": 40,
         "event_probability": 50,
         "category": "test",

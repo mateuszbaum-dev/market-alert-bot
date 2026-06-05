@@ -3,6 +3,8 @@
 __pycache__/
 .pytest_cache/
 work-pytest*/
+manual-test-temp*/
+manual-temp-check/
 .mypy_cache/
 .coverage
 htmlcov/

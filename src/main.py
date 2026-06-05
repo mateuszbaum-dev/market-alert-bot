@@ -12,7 +12,7 @@ from src.config import load_watchlist_symbols, prepare_google_credentials_from_e
 from src.notifications.formatter import format_market_alert
 from src.notifications.telegram import send_telegram_message
 from src.providers.finnhub import fetch_company_news
-from src.scoring.gpt_classifier import classify_event_with_gpt
+from src.scoring.gpt_classifier import classify_event_with_gpt, fallback_classification
 from src.scoring.rules import score_event
 from src.storage.adapter import get_storage_backend
 
@@ -79,11 +79,14 @@ def run_pipeline() -> dict[str, int]:
                 rule_score = score_event(event)
                 stats["rule_scored_events"] += 1
                 gpt_result = None
-                if _should_call_gpt(settings, rule_score, stats["gpt_calls_used"]):
-                    gpt_result = classify_event_with_gpt(event, rule_score)
-                    stats["gpt_calls_used"] += 1
-                elif _gpt_would_qualify(settings, rule_score) and stats["gpt_calls_used"] >= settings.max_gpt_calls_per_run:
-                    _log(f"{symbol}: GPT skipped for {event.event_id}; MAX_GPT_CALLS_PER_RUN reached")
+                if settings.use_ai:
+                    if _should_call_gpt(settings, rule_score, stats["gpt_calls_used"]):
+                        gpt_result = _classify_with_fallback(event, rule_score)
+                        stats["gpt_calls_used"] += 1
+                    elif _gpt_would_qualify(settings, rule_score) and stats["gpt_calls_used"] >= settings.max_gpt_calls_per_run:
+                        stats["alerts_skipped"] += 1
+                        _log("Skipped alert because GPT limit was reached and GPT analysis is required.")
+                        continue
 
                 if not _should_notify(settings, rule_score, gpt_result):
                     stats["alerts_skipped"] += 1
@@ -138,9 +141,18 @@ def _gpt_would_qualify(settings: PipelineSettings, rule_score: dict[str, Any]) -
 
 
 def _should_notify(settings: PipelineSettings, rule_score: dict[str, Any], gpt_result: dict | None) -> bool:
+    if settings.use_ai:
+        return bool(gpt_result and gpt_result.get("should_notify", False))
     if gpt_result is not None:
         return bool(gpt_result.get("should_notify", False))
     return int(rule_score.get("score", 0)) >= settings.min_score_to_notify
+
+
+def _classify_with_fallback(event: Any, rule_score: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return classify_event_with_gpt(event, rule_score)
+    except Exception:
+        return fallback_classification(rule_score)
 
 
 def _env_bool(name: str, default: bool) -> bool:

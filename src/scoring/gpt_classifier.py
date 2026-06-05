@@ -63,7 +63,7 @@ def classify_event_with_gpt(event: MarketEvent, rule_score: dict) -> GptClassifi
         content = response.choices[0].message.content or ""
         return _validate_classification(json.loads(content))
     except Exception:
-        return _fallback_classification(rule_score)
+        return fallback_classification(rule_score)
 
 
 def _compact_event_payload(event: MarketEvent, rule_score: dict) -> dict[str, Any]:
@@ -97,7 +97,7 @@ def _validate_classification(payload: Any) -> GptClassification:
     }
 
 
-def _fallback_classification(rule_score: dict) -> GptClassification:
+def fallback_classification(rule_score: dict) -> GptClassification:
     rule_score_value = _rule_score_value(rule_score)
     return {
         "impact_level": _rule_level(rule_score),  # type: ignore[typeddict-item]
