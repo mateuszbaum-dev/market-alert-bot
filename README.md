@@ -59,6 +59,34 @@ Each company can define:
 - `cik`: SEC Central Index Key.
 - `keywords`: Important words or phrases.
 
+Change the symbols the bot monitors by editing `watchlist.yaml`.
+
+Example:
+
+```yaml
+companies:
+  - name: NVIDIA
+    ticker: NVDA
+    cik: "0001045810"
+    keywords:
+      - guidance
+      - data center
+
+  - name: Apple
+    ticker: AAPL
+    cik: "0000320193"
+    keywords:
+      - earnings
+      - iPhone
+
+  - name: Microsoft
+    ticker: MSFT
+    cik: "0000789019"
+    keywords:
+      - Azure
+      - AI
+```
+
 ## Event Model
 
 All future providers should normalize incoming data into the `MarketEvent` dataclass. This gives scoring, storage, and notification code a consistent shape regardless of whether an event came from filings, news, or another source.
@@ -86,30 +114,30 @@ These are AI-generated monitoring estimates, not predictions. This tool is for m
 
 ## Alert Formatting
 
-Telegram alert messages are formatted as plain text to avoid parse errors. Example:
+Telegram alert messages use simple Telegram HTML formatting. Example:
 
 ```text
-🚨 Market Monitoring Alert
+🚨 Market Alert
 
-Symbol: AAPL
-Source: finnhub
-Event Type: company_news
-Title: Apple reports earnings
-Impact Level: HIGH
-Rule Score: 5
-Rule Reasons:
-- Mentions earnings
+Ticker: <b>NVDA</b>
+Direction: 🟢 BULLISH
+Impact: 8/10
+Impact level: HIGH
+Direction confidence: 78%
+Reaction probability: 65%
 
-Impact Score: 8/10
-Direction: BULLISH
-Direction Confidence: 76%
-Reaction Probability: 72%
 Category: earnings
-Reasoning Summary: Relevant for market monitoring.
+Source: finnhub
+Type: company_news
 
-Link: https://example.com/aapl
+Title:
+Nvidia shares move after new AI chip demand report
 
-Monitoring alert only. Not financial advice.
+AI summary:
+The news may be interpreted positively because it suggests strong demand and improved revenue expectations.
+
+Link:
+https://example.com/nvda
 ```
 
 ## Running The Pipeline Locally

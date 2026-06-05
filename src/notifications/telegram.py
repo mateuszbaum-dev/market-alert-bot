@@ -9,7 +9,7 @@ TELEGRAM_SEND_MESSAGE_URL = "https://api.telegram.org/bot{token}/sendMessage"
 REQUEST_TIMEOUT_SECONDS = 10
 
 
-def send_telegram_message(message: str) -> bool:
+def send_telegram_message(message: str, disable_web_page_preview: bool = True) -> bool:
     load_dotenv()
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
@@ -21,7 +21,8 @@ def send_telegram_message(message: str) -> bool:
         json={
             "chat_id": chat_id,
             "text": message,
-            "disable_web_page_preview": False,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": disable_web_page_preview,
         },
         timeout=REQUEST_TIMEOUT_SECONDS,
     )

@@ -20,7 +20,7 @@ def test_dry_run_prints_alert_but_does_not_send_or_mark_sent(tmp_path, monkeypat
     stats = main_module.run_pipeline()
 
     captured = capsys.readouterr()
-    assert "Market Monitoring Alert" in captured.out
+    assert "Market Alert" in captured.out
     assert stats["alerts"] == 1
     assert stats["alerts_printed"] == 1
     assert stats["alerts_sent"] == 0
