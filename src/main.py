@@ -14,7 +14,7 @@ from src.notifications.telegram import send_telegram_message
 from src.providers.finnhub import fetch_company_news
 from src.scoring.gpt_classifier import classify_event_with_gpt
 from src.scoring.rules import score_event
-from src.storage.db import init_db, mark_alert_sent, was_alert_sent
+from src.storage.adapter import get_storage_backend
 
 
 @dataclass(frozen=True)
@@ -42,7 +42,8 @@ def load_pipeline_settings() -> PipelineSettings:
 def run_pipeline() -> dict[str, int]:
     settings = load_pipeline_settings()
     symbols = load_watchlist_symbols()
-    init_db()
+    storage = get_storage_backend()
+    storage.init_db()
 
     stats = {
         "symbols": len(symbols),
@@ -70,7 +71,7 @@ def run_pipeline() -> dict[str, int]:
                 _log(f"{symbol}: no events returned")
 
             for event in events:
-                if was_alert_sent(event.event_id):
+                if storage.was_alert_sent(event.event_id):
                     stats["skipped_duplicates"] += 1
                     continue
 
@@ -96,7 +97,7 @@ def run_pipeline() -> dict[str, int]:
 
                 try:
                     if send_telegram_message(message):
-                        mark_alert_sent(event.event_id, event.symbol, event.source, event.title)
+                        storage.mark_alert_sent(event.event_id, event.symbol, event.source, event.title)
                         stats["alerts"] += 1
                         stats["alerts_sent"] += 1
                     else:

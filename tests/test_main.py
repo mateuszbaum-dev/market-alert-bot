@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import src.main as main_module
 from src.models.event import MarketEvent
@@ -8,14 +9,12 @@ def test_dry_run_prints_alert_but_does_not_send_or_mark_sent(tmp_path, monkeypat
     _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("USE_AI", "false")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    mark_calls = []
+    _set_storage(monkeypatch, was_sent=False, mark_calls=mark_calls)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
     send_calls = []
-    mark_calls = []
     monkeypatch.setattr(main_module, "send_telegram_message", lambda message: send_calls.append(message))
-    monkeypatch.setattr(main_module, "mark_alert_sent", lambda *args: mark_calls.append(args))
 
     stats = main_module.run_pipeline()
 
@@ -31,9 +30,8 @@ def test_dry_run_prints_alert_but_does_not_send_or_mark_sent(tmp_path, monkeypat
 def test_duplicate_event_is_skipped(tmp_path, monkeypatch) -> None:
     _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
     monkeypatch.setenv("DRY_RUN", "true")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    _set_storage(monkeypatch, was_sent=True)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: True)
     score_calls = []
     monkeypatch.setattr(main_module, "score_event", lambda event: score_calls.append(event))
 
@@ -50,9 +48,8 @@ def test_gpt_is_called_when_rule_score_meets_threshold(tmp_path, monkeypatch) ->
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("USE_AI", "true")
     monkeypatch.setenv("AI_THRESHOLD", "4")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    _set_storage(monkeypatch, was_sent=False)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=4, level="MEDIUM"))
     gpt_calls = []
     monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: gpt_calls.append((event, score)) or _gpt_result())
@@ -68,9 +65,8 @@ def test_gpt_is_not_called_when_threshold_is_not_met(tmp_path, monkeypatch) -> N
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("USE_AI", "true")
     monkeypatch.setenv("AI_THRESHOLD", "4")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    _set_storage(monkeypatch, was_sent=False)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=3, level="MEDIUM"))
     gpt_calls = []
     monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: gpt_calls.append((event, score)))
@@ -87,13 +83,12 @@ def test_gpt_limit_is_respected(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("USE_AI", "true")
     monkeypatch.setenv("AI_THRESHOLD", "4")
     monkeypatch.setenv("MAX_GPT_CALLS_PER_RUN", "1")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    _set_storage(monkeypatch, was_sent=False)
     monkeypatch.setattr(
         main_module,
         "fetch_company_news",
         lambda symbol, days_back: [_event(symbol, suffix="1"), _event(symbol, suffix="2")],
     )
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
     gpt_calls = []
     monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: gpt_calls.append((event, score)) or _gpt_result())
@@ -110,13 +105,11 @@ def test_telegram_send_success_marks_alert_as_sent(tmp_path, monkeypatch) -> Non
     _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
     monkeypatch.setenv("DRY_RUN", "false")
     monkeypatch.setenv("USE_AI", "false")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    mark_calls = []
+    _set_storage(monkeypatch, was_sent=False, mark_calls=mark_calls)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
     monkeypatch.setattr(main_module, "send_telegram_message", lambda message: True)
-    mark_calls = []
-    monkeypatch.setattr(main_module, "mark_alert_sent", lambda *args: mark_calls.append(args))
 
     stats = main_module.run_pipeline()
 
@@ -129,17 +122,15 @@ def test_telegram_send_failure_does_not_mark_alert_as_sent(tmp_path, monkeypatch
     _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
     monkeypatch.setenv("DRY_RUN", "false")
     monkeypatch.setenv("USE_AI", "false")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    mark_calls = []
+    _set_storage(monkeypatch, was_sent=False, mark_calls=mark_calls)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
 
     def send_failure(message: str) -> bool:
         raise RuntimeError("send failed")
 
     monkeypatch.setattr(main_module, "send_telegram_message", send_failure)
-    mark_calls = []
-    monkeypatch.setattr(main_module, "mark_alert_sent", lambda *args: mark_calls.append(args))
 
     stats = main_module.run_pipeline()
 
@@ -152,7 +143,7 @@ def test_one_symbol_failure_does_not_stop_another_symbol(tmp_path, monkeypatch) 
     _set_watchlist(tmp_path, monkeypatch, ["AAPL", "MSFT"])
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("USE_AI", "false")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    _set_storage(monkeypatch, was_sent=False)
 
     def fetch(symbol: str, days_back: int):
         if symbol == "AAPL":
@@ -160,7 +151,6 @@ def test_one_symbol_failure_does_not_stop_another_symbol(tmp_path, monkeypatch) 
         return [_event(symbol)]
 
     monkeypatch.setattr(main_module, "fetch_company_news", fetch)
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
 
     stats = main_module.run_pipeline()
@@ -176,14 +166,23 @@ def _set_watchlist(tmp_path: Path, monkeypatch, symbols: list[str]) -> None:
     monkeypatch.setenv("WATCHLIST_PATH", str(tmp_path / "watchlist.yaml"))
 
 
+def _set_storage(monkeypatch, was_sent: bool, mark_calls: list | None = None) -> None:
+    mark_calls = mark_calls if mark_calls is not None else []
+    backend = SimpleNamespace(
+        init_db=lambda: None,
+        was_alert_sent=lambda event_id: was_sent,
+        mark_alert_sent=lambda *args: mark_calls.append(args),
+    )
+    monkeypatch.setattr(main_module, "get_storage_backend", lambda: backend)
+
+
 def test_google_sheets_watchlist_source_runs_with_mocked_loader(tmp_path, monkeypatch) -> None:
     _set_watchlist(tmp_path, monkeypatch, ["NVDA"])
     monkeypatch.setenv("WATCHLIST_SOURCE", "google_sheets")
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("USE_AI", "false")
-    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    _set_storage(monkeypatch, was_sent=False)
     monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
-    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
     monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
 
     stats = main_module.run_pipeline()
