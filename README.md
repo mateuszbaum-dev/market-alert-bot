@@ -2,7 +2,7 @@
 
 Market Alert Bot is a Python 3.11+ MVP for monitoring a configurable market watchlist and preparing future alert workflows.
 
-This first version focuses on clean project structure, configuration loading, Finnhub company news, rule-based scoring, optional GPT classification, SQLite alert deduplication, and test setup. Notification delivery is intentionally left as a placeholder for later implementation.
+This first version focuses on clean project structure, configuration loading, Finnhub company news, rule-based scoring, optional GPT classification, Telegram alert formatting/sending, SQLite alert deduplication, and test setup.
 
 ## Project Structure
 
@@ -43,7 +43,11 @@ Configuration is loaded from environment variables, with optional `.env` support
 | `OPENAI_MODEL` | No | Defaults to `gpt-4.1-mini`. |
 | `USE_AI` | No | Defaults to `true` in the example config. |
 | `AI_THRESHOLD` | No | Suggested minimum rule score before GPT classification. |
+| `MIN_SCORE_TO_NOTIFY` | No | Defaults to `6`. Used when GPT classification is not called. |
 | `MAX_GPT_CALLS_PER_RUN` | No | Suggested cap for GPT calls in one run. |
+| `DRY_RUN` | No | Defaults to `true`. Prints alerts instead of sending Telegram messages. |
+| `TELEGRAM_BOT_TOKEN` | For Telegram | Required when `DRY_RUN=false`. |
+| `TELEGRAM_CHAT_ID` | For Telegram | Required when `DRY_RUN=false`. |
 
 ## Watchlist Format
 
@@ -107,6 +111,16 @@ Link: https://example.com/aapl
 
 Monitoring alert only. Not financial advice.
 ```
+
+## Running The Pipeline Locally
+
+Create `.env` and `watchlist.yaml`, then run:
+
+```powershell
+py -m src.main
+```
+
+By default `DRY_RUN=true`, so alerts are printed to the console and are not sent or marked as sent. Set `DRY_RUN=false` only after configuring Telegram credentials.
 
 ## Running Tests
 
