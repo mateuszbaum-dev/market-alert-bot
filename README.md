@@ -122,6 +122,8 @@ GOOGLE_SHEETS_RANGE=Watchlist!A2:A
 
 Do not commit `google-service-account.json` or any service account credentials to Git.
 
+For GitHub Actions, store the full service account JSON in a repository secret named `GOOGLE_SERVICE_ACCOUNT_JSON`. At runtime, the app writes that secret to an ignored `google-service-account.json` file and sets `GOOGLE_SHEETS_CREDENTIALS_PATH` automatically. Do not print this secret in workflows or logs.
+
 ## Rule-Based Scoring
 
 Market events can be scored with deterministic rules in `src/scoring/rules.py`. The scorer returns a numeric score, a `LOW`, `MEDIUM`, or `HIGH` level, and human-readable reasons explaining which rules matched.

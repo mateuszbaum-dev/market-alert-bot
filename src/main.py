@@ -8,7 +8,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from src.config import load_watchlist_symbols
+from src.config import load_watchlist_symbols, prepare_google_credentials_from_env
 from src.notifications.formatter import format_market_alert
 from src.notifications.telegram import send_telegram_message
 from src.providers.finnhub import fetch_company_news
@@ -41,6 +41,7 @@ def load_pipeline_settings() -> PipelineSettings:
 
 def run_pipeline() -> dict[str, int]:
     settings = load_pipeline_settings()
+    prepare_google_credentials_from_env()
     symbols = load_watchlist_symbols()
     storage = get_storage_backend()
     storage.init_db()

@@ -38,6 +38,18 @@ def load_settings() -> Settings:
     )
 
 
+def prepare_google_credentials_from_env(project_root: Path | None = None) -> Path | None:
+    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if not service_account_json:
+        return None
+
+    root = project_root or Path.cwd()
+    credentials_path = root / "google-service-account.json"
+    credentials_path.write_text(service_account_json, encoding="utf-8")
+    os.environ["GOOGLE_SHEETS_CREDENTIALS_PATH"] = str(credentials_path)
+    return credentials_path
+
+
 def load_watchlist(path: Path) -> list[WatchTarget]:
     if not path.exists():
         raise FileNotFoundError(f"Watchlist not found: {path}")
