@@ -2,6 +2,7 @@
 .venv-test/
 __pycache__/
 .pytest_cache/
+work-pytest*/
 .mypy_cache/
 .coverage
 htmlcov/

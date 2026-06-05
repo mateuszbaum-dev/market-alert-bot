@@ -181,6 +181,20 @@ By default `DRY_RUN=true`, so alerts are printed to the console and are not sent
 
 Each run prints a summary with symbols processed, events fetched, duplicates skipped, rule-scored events, GPT calls used, alerts sent or printed, and alerts skipped. `MAX_GPT_CALLS_PER_RUN` is enforced strictly to keep AI usage bounded.
 
+## Running In GitHub Actions
+
+The workflow in `.github/workflows/market-alerts.yml` runs tests and then starts the bot with:
+
+```powershell
+python -m src.main
+```
+
+It can be run manually from GitHub by opening the repository, going to **Actions**, selecting **Market Alerts**, and choosing **Run workflow**.
+
+The scheduled trigger checks for alerts every 10 minutes with cron `*/10 * * * *`. GitHub-hosted scheduled workflows can be delayed or skipped during heavy platform load, so runs may not happen exactly on the minute.
+
+To inspect a run, open **Actions > Market Alerts**, select the latest run, and review the **Run market alert bot** logs. Configure repository secrets for Telegram, Finnhub, OpenAI, Google Sheets, and Supabase before setting `DRY_RUN=false`.
+
 ## Sending A Manual Test Alert
 
 After configuring Telegram credentials in `.env`, send a sample formatted alert with:
