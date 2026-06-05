@@ -176,6 +176,16 @@ By default `DRY_RUN=true`, so alerts are printed to the console and are not sent
 
 Each run prints a summary with symbols processed, events fetched, duplicates skipped, rule-scored events, GPT calls used, alerts sent or printed, and alerts skipped. `MAX_GPT_CALLS_PER_RUN` is enforced strictly to keep AI usage bounded.
 
+## Sending A Manual Test Alert
+
+After configuring Telegram credentials in `.env`, send a sample formatted alert with:
+
+```powershell
+py -m src.test_alert
+```
+
+This command only sends a sample Telegram message. It does not write anything to the alert database.
+
 ## Running Tests
 
 ```powershell
