@@ -20,6 +20,10 @@ class WatchTarget:
 @dataclass(frozen=True)
 class Settings:
     watchlist_path: Path
+    watchlist_source: str = "yaml"
+    google_sheets_credentials_path: str = ""
+    google_sheets_spreadsheet_id: str = ""
+    google_sheets_range: str = "Watchlist!A2:A"
 
 
 def load_settings() -> Settings:
@@ -27,6 +31,10 @@ def load_settings() -> Settings:
 
     return Settings(
         watchlist_path=Path(os.getenv("WATCHLIST_PATH", "watchlist.yaml")),
+        watchlist_source=os.getenv("WATCHLIST_SOURCE", "yaml").strip().lower(),
+        google_sheets_credentials_path=os.getenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "").strip(),
+        google_sheets_spreadsheet_id=os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "").strip(),
+        google_sheets_range=os.getenv("GOOGLE_SHEETS_RANGE", "Watchlist!A2:A").strip(),
     )
 
 
@@ -52,6 +60,23 @@ def load_watchlist(path: Path) -> list[WatchTarget]:
     ]
 
 
+def load_watchlist_symbols(settings: Settings | None = None) -> list[str]:
+    settings = settings or load_settings()
+
+    if settings.watchlist_source == "yaml":
+        return [target.ticker for target in load_watchlist(settings.watchlist_path)]
+
+    if settings.watchlist_source == "google_sheets":
+        try:
+            return _load_google_sheet_symbols(settings)
+        except (ValueError, FileNotFoundError):
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load Google Sheets watchlist: {exc}") from exc
+
+    raise ValueError(f"Unsupported WATCHLIST_SOURCE: {settings.watchlist_source}")
+
+
 def _normalize_cik(value: Any) -> str | None:
     if value is None:
         return None
@@ -59,3 +84,13 @@ def _normalize_cik(value: Any) -> str | None:
     if not text:
         return None
     return text.zfill(10)
+
+
+def _load_google_sheet_symbols(settings: Settings) -> list[str]:
+    from src.providers.google_sheets_watchlist import load_symbols_from_google_sheets
+
+    return load_symbols_from_google_sheets(
+        spreadsheet_id=settings.google_sheets_spreadsheet_id,
+        range_name=settings.google_sheets_range,
+        credentials_path=settings.google_sheets_credentials_path,
+    )

@@ -36,7 +36,11 @@ Configuration is loaded from environment variables, with optional `.env` support
 
 | Variable | Required | Description |
 | --- | --- | --- |
+| `WATCHLIST_SOURCE` | No | Defaults to `yaml`. Use `google_sheets` to read symbols from Google Sheets. |
 | `WATCHLIST_PATH` | No | Defaults to `watchlist.yaml`. |
+| `GOOGLE_SHEETS_CREDENTIALS_PATH` | For Google Sheets | Path to the service account JSON credentials file. |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | For Google Sheets | Google Sheet ID from the spreadsheet URL. |
+| `GOOGLE_SHEETS_RANGE` | For Google Sheets | Defaults to `Watchlist!A2:A`. |
 | `ALERT_DB_PATH` | No | Defaults to `alerts.db`. Stores sent alert records for deduplication. |
 | `FINNHUB_API_KEY` | For Finnhub | API key used by the Finnhub company news provider. |
 | `OPENAI_API_KEY` | For GPT classifier | API key used for AI event classification. |
@@ -94,6 +98,26 @@ All future providers should normalize incoming data into the `MarketEvent` datac
 ## Finnhub Provider
 
 The Finnhub provider fetches company news and normalizes every valid article into `MarketEvent`. To use it, create a Finnhub API key and set `FINNHUB_API_KEY` in `.env`.
+
+## Using Google Sheets As Watchlist
+
+YAML remains the default watchlist source. To use Google Sheets instead:
+
+1. Create a Google Sheet with ticker symbols in column A, one symbol per row.
+2. Enable the Google Sheets API in Google Cloud.
+3. Create a service account.
+4. Download the service account JSON credentials file.
+5. Share the Google Sheet with the service account email.
+6. Set these `.env` values:
+
+```env
+WATCHLIST_SOURCE=google_sheets
+GOOGLE_SHEETS_CREDENTIALS_PATH=google-service-account.json
+GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
+GOOGLE_SHEETS_RANGE=Watchlist!A2:A
+```
+
+Do not commit `google-service-account.json` or any service account credentials to Git.
 
 ## Rule-Based Scoring
 

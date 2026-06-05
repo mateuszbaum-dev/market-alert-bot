@@ -172,12 +172,24 @@ def test_one_symbol_failure_does_not_stop_another_symbol(tmp_path, monkeypatch) 
 
 
 def _set_watchlist(tmp_path: Path, monkeypatch, symbols: list[str]) -> None:
-    companies = "\n".join(
-        f"  - name: {symbol}\n    ticker: {symbol}\n" for symbol in symbols
-    )
-    watchlist = tmp_path / "watchlist.yaml"
-    watchlist.write_text(f"companies:\n{companies}", encoding="utf-8")
-    monkeypatch.setenv("WATCHLIST_PATH", str(watchlist))
+    monkeypatch.setattr(main_module, "load_watchlist_symbols", lambda: symbols)
+    monkeypatch.setenv("WATCHLIST_PATH", str(tmp_path / "watchlist.yaml"))
+
+
+def test_google_sheets_watchlist_source_runs_with_mocked_loader(tmp_path, monkeypatch) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["NVDA"])
+    monkeypatch.setenv("WATCHLIST_SOURCE", "google_sheets")
+    monkeypatch.setenv("DRY_RUN", "true")
+    monkeypatch.setenv("USE_AI", "false")
+    monkeypatch.setattr(main_module, "init_db", lambda: None)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    monkeypatch.setattr(main_module, "was_alert_sent", lambda event_id: False)
+    monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
+
+    stats = main_module.run_pipeline()
+
+    assert stats["symbols"] == 1
+    assert stats["alerts"] == 1
 
 
 def _event(symbol: str, suffix: str = "") -> MarketEvent:

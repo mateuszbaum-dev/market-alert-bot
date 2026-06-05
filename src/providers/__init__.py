@@ -1,5 +1,3 @@
-"""Provider interfaces for market data sources."""
+"""Provider modules for market data and watchlist sources."""
 
-from .finnhub import fetch_company_news
-
-__all__ = ["fetch_company_news"]
+__all__: list[str] = []

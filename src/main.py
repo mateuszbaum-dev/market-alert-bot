@@ -8,7 +8,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from src.config import load_watchlist
+from src.config import load_watchlist_symbols
 from src.notifications.formatter import format_market_alert
 from src.notifications.telegram import send_telegram_message
 from src.providers.finnhub import fetch_company_news
@@ -41,11 +41,11 @@ def load_pipeline_settings() -> PipelineSettings:
 
 def run_pipeline() -> dict[str, int]:
     settings = load_pipeline_settings()
-    targets = load_watchlist(settings.watchlist_path)
+    symbols = load_watchlist_symbols()
     init_db()
 
     stats = {
-        "symbols": len(targets),
+        "symbols": len(symbols),
         "symbols_processed": 0,
         "events_fetched": 0,
         "skipped_duplicates": 0,
@@ -60,8 +60,7 @@ def run_pipeline() -> dict[str, int]:
     _log("Market Alert Bot started")
     _log(f"Symbols: {stats['symbols']}")
 
-    for target in targets:
-        symbol = target.ticker
+    for symbol in symbols:
         stats["symbols_processed"] += 1
         try:
             events = fetch_company_news(symbol, days_back=1)
