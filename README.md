@@ -122,6 +122,8 @@ py -m src.main
 
 By default `DRY_RUN=true`, so alerts are printed to the console and are not sent or marked as sent. Set `DRY_RUN=false` only after configuring Telegram credentials.
 
+Each run prints a summary with symbols processed, events fetched, duplicates skipped, rule-scored events, GPT calls used, alerts sent or printed, and alerts skipped. `MAX_GPT_CALLS_PER_RUN` is enforced strictly to keep AI usage bounded.
+
 ## Running Tests
 
 ```powershell
