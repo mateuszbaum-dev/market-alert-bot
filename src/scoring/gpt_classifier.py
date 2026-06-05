@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, Literal, TypedDict
 
 from dotenv import load_dotenv
@@ -61,8 +62,13 @@ def classify_event_with_gpt(event: MarketEvent, rule_score: dict) -> GptClassifi
             ],
         )
         content = response.choices[0].message.content or ""
-        return _validate_classification(json.loads(content))
-    except Exception:
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Invalid JSON response from GPT classifier") from exc
+        return _validate_classification(payload)
+    except Exception as exc:
+        _log_fallback_reason(event, exc)
         return fallback_classification(rule_score)
 
 
@@ -116,16 +122,18 @@ def _required_choice(payload: dict[str, Any], key: str, valid_values: set[str]) 
         raise ValueError(f"Missing required GPT field: {key}")
     value = str(payload[key]).upper()
     if value not in valid_values:
-        raise ValueError(f"Invalid GPT field: {key}")
+        raise ValueError(f"Invalid GPT field value: {key}")
     return value
 
 
 def _required_int(payload: dict[str, Any], key: str, minimum: int, maximum: int) -> int:
-    if key not in payload or isinstance(payload[key], bool) or not isinstance(payload[key], int):
-        raise ValueError(f"Missing or invalid GPT integer field: {key}")
+    if key not in payload:
+        raise ValueError(f"Missing required GPT field: {key}")
+    if isinstance(payload[key], bool) or not isinstance(payload[key], int):
+        raise ValueError(f"Invalid GPT integer field: {key}")
     value = payload[key]
     if value < minimum or value > maximum:
-        raise ValueError(f"GPT integer field out of range: {key}")
+        raise ValueError(f"Invalid GPT field range: {key} must be between {minimum} and {maximum}")
     return value
 
 
@@ -142,6 +150,45 @@ def _required_bool(payload: dict[str, Any], key: str) -> bool:
     if key not in payload or not isinstance(payload[key], bool):
         raise ValueError(f"Missing or invalid GPT boolean field: {key}")
     return payload[key]
+
+
+def _log_fallback_reason(event: MarketEvent, exc: Exception) -> None:
+    symbol = _safe_context_value(getattr(event, "symbol", None))
+    event_id = _safe_context_value(getattr(event, "event_id", None))
+    reason = _fallback_reason(exc)
+    print(f"GPT classification fallback for symbol={symbol} event_id={event_id}: {reason}")
+
+
+def _fallback_reason(exc: Exception) -> str:
+    message = _safe_error_message(exc)
+    lower_message = message.lower()
+
+    if isinstance(exc, ValueError) and "invalid json response" in lower_message:
+        return f"invalid JSON response ({type(exc).__name__}: {message})"
+    if "missing required gpt field" in lower_message or "missing required gpt text field" in lower_message:
+        return f"missing required field ({type(exc).__name__}: {message})"
+    if "impact_score" in lower_message and ("range" in lower_message or "integer" in lower_message):
+        return f"invalid impact_score range ({type(exc).__name__}: {message})"
+    if "market_direction" in lower_message:
+        return f"invalid market_direction ({type(exc).__name__}: {message})"
+    if "direction_confidence" in lower_message and ("range" in lower_message or "integer" in lower_message):
+        return f"invalid direction_confidence range ({type(exc).__name__}: {message})"
+    if "event_probability" in lower_message and ("range" in lower_message or "integer" in lower_message):
+        return f"invalid event_probability range ({type(exc).__name__}: {message})"
+    return f"OpenAI API error ({type(exc).__name__}: {message})"
+
+
+def _safe_context_value(value: Any) -> str:
+    text = str(value).strip() if value is not None else ""
+    return text or "N/A"
+
+
+def _safe_error_message(exc: Exception) -> str:
+    message = str(exc).strip() or "No error message provided"
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if api_key:
+        message = message.replace(api_key, "[REDACTED]")
+    return re.sub(r"sk-[A-Za-z0-9_-]+", "[REDACTED]", message)
 
 
 def _rule_score_value(rule_score: dict) -> int:

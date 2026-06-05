@@ -47,7 +47,7 @@ def test_successful_valid_gpt_response_with_all_new_fields(monkeypatch) -> None:
     }
 
 
-def test_invalid_impact_score_returns_fallback(monkeypatch) -> None:
+def test_invalid_impact_score_returns_fallback(monkeypatch, capsys) -> None:
     payload = _valid_payload()
     payload["impact_score"] = 11
     _mock_openai(monkeypatch, payload)
@@ -55,9 +55,12 @@ def test_invalid_impact_score_returns_fallback(monkeypatch) -> None:
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
 
     assert result == _fallback(score_level="HIGH", impact_score=6, event_probability=50, should_notify=True)
+    captured = capsys.readouterr()
+    assert "symbol=AAPL event_id=event-1" in captured.out
+    assert "invalid impact_score range" in captured.out
 
 
-def test_invalid_direction_confidence_returns_fallback(monkeypatch) -> None:
+def test_invalid_direction_confidence_returns_fallback(monkeypatch, capsys) -> None:
     payload = _valid_payload()
     payload["direction_confidence"] = -1
     _mock_openai(monkeypatch, payload)
@@ -65,9 +68,11 @@ def test_invalid_direction_confidence_returns_fallback(monkeypatch) -> None:
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=5, level="MEDIUM"))
 
     assert result == _fallback(score_level="MEDIUM", impact_score=4, event_probability=35, should_notify=False)
+    captured = capsys.readouterr()
+    assert "invalid direction_confidence range" in captured.out
 
 
-def test_invalid_event_probability_returns_fallback(monkeypatch) -> None:
+def test_invalid_event_probability_returns_fallback(monkeypatch, capsys) -> None:
     payload = _valid_payload()
     payload["event_probability"] = 101
     _mock_openai(monkeypatch, payload)
@@ -75,9 +80,11 @@ def test_invalid_event_probability_returns_fallback(monkeypatch) -> None:
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=2, level="LOW"))
 
     assert result == _fallback(score_level="LOW", impact_score=2, event_probability=20, should_notify=False)
+    captured = capsys.readouterr()
+    assert "invalid event_probability range" in captured.out
 
 
-def test_invalid_market_direction_returns_fallback(monkeypatch) -> None:
+def test_invalid_market_direction_returns_fallback(monkeypatch, capsys) -> None:
     payload = _valid_payload()
     payload["market_direction"] = "POSITIVE"
     _mock_openai(monkeypatch, payload)
@@ -87,22 +94,43 @@ def test_invalid_market_direction_returns_fallback(monkeypatch) -> None:
     assert result["market_direction"] == "UNCLEAR"
     assert result["category"] == "rule_based_fallback"
     assert result["should_notify"] is True
+    captured = capsys.readouterr()
+    assert "invalid market_direction" in captured.out
 
 
-def test_invalid_json_returns_rule_based_fallback(monkeypatch) -> None:
+def test_missing_required_field_returns_fallback_and_logs_reason(monkeypatch, capsys) -> None:
+    payload = _valid_payload()
+    del payload["category"]
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result == _fallback(score_level="HIGH", impact_score=6, event_probability=50, should_notify=True)
+    captured = capsys.readouterr()
+    assert "missing required field" in captured.out
+    assert "category" in captured.out
+
+
+def test_invalid_json_returns_rule_based_fallback(monkeypatch, capsys) -> None:
     _mock_openai(monkeypatch, "not json", raw_content=True)
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
 
     assert result == _fallback(score_level="HIGH", impact_score=6, event_probability=50, should_notify=True)
+    captured = capsys.readouterr()
+    assert "invalid JSON response" in captured.out
 
 
-def test_api_failure_returns_rule_based_fallback(monkeypatch) -> None:
-    _mock_openai(monkeypatch, RuntimeError("api failed"))
+def test_api_failure_returns_rule_based_fallback(monkeypatch, capsys) -> None:
+    _mock_openai(monkeypatch, RuntimeError("api failed for key test-key"))
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=5, level="MEDIUM"))
 
     assert result == _fallback(score_level="MEDIUM", impact_score=4, event_probability=35, should_notify=False)
+    captured = capsys.readouterr()
+    assert "OpenAI API error" in captured.out
+    assert "[REDACTED]" in captured.out
+    assert "test-key" not in captured.out
 
 
 def _mock_openai(monkeypatch, payload, raw_content: bool = False) -> list[dict]:
