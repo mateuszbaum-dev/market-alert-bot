@@ -89,7 +89,7 @@ def _validate_classification(payload: Any) -> GptClassification:
         raise ValueError("GPT classification must be a JSON object")
 
     impact_level = _required_choice(payload, "impact_level", VALID_IMPACT_LEVELS)
-    market_direction = _required_choice(payload, "market_direction", VALID_MARKET_DIRECTIONS)
+    market_direction = normalize_market_direction(payload.get("market_direction"))
 
     return {
         "impact_level": impact_level,  # type: ignore[typeddict-item]
@@ -115,6 +115,26 @@ def fallback_classification(rule_score: dict) -> GptClassification:
         "reasoning_summary": "GPT classification failed or returned invalid data; using rule-based score.",
         "should_notify": rule_score_value >= 6,
     }
+
+
+def normalize_market_direction(value: Any) -> str:
+    if not isinstance(value, str):
+        return "UNCLEAR"
+
+    direction = value.strip().upper()
+    if not direction:
+        return "UNCLEAR"
+    if direction in VALID_MARKET_DIRECTIONS:
+        return direction
+    if "BULLISH" in direction or "POSITIVE" in direction:
+        return "BULLISH"
+    if "BEARISH" in direction or "NEGATIVE" in direction:
+        return "BEARISH"
+    if "NEUTRAL" in direction:
+        return "NEUTRAL"
+    if any(token in direction for token in ("UNCLEAR", "UNKNOWN", "MIXED", "AMBIGUOUS")):
+        return "UNCLEAR"
+    return "UNCLEAR"
 
 
 def _required_choice(payload: dict[str, Any], key: str, valid_values: set[str]) -> str:

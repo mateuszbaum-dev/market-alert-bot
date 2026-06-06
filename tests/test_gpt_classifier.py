@@ -84,18 +84,38 @@ def test_invalid_event_probability_returns_fallback(monkeypatch, capsys) -> None
     assert "invalid event_probability range" in captured.out
 
 
-def test_invalid_market_direction_returns_fallback(monkeypatch, capsys) -> None:
+def test_normalize_market_direction_lowercase_bullish() -> None:
+    assert gpt_classifier.normalize_market_direction("bullish") == "BULLISH"
+
+
+def test_normalize_market_direction_slightly_bullish() -> None:
+    assert gpt_classifier.normalize_market_direction("Slightly bullish") == "BULLISH"
+
+
+def test_normalize_market_direction_negative() -> None:
+    assert gpt_classifier.normalize_market_direction("negative") == "BEARISH"
+
+
+def test_normalize_market_direction_mixed() -> None:
+    assert gpt_classifier.normalize_market_direction("mixed") == "UNCLEAR"
+
+
+def test_normalize_market_direction_unexpected_value() -> None:
+    assert gpt_classifier.normalize_market_direction("directionally complex") == "UNCLEAR"
+
+
+def test_lowercase_market_direction_does_not_fallback(monkeypatch, capsys) -> None:
     payload = _valid_payload()
-    payload["market_direction"] = "POSITIVE"
+    payload["market_direction"] = "bullish"
     _mock_openai(monkeypatch, payload)
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
 
-    assert result["market_direction"] == "UNCLEAR"
-    assert result["category"] == "rule_based_fallback"
+    assert result["market_direction"] == "BULLISH"
+    assert result["category"] == "earnings"
     assert result["should_notify"] is True
     captured = capsys.readouterr()
-    assert "invalid market_direction" in captured.out
+    assert "GPT classification fallback" not in captured.out
 
 
 def test_missing_required_field_returns_fallback_and_logs_reason(monkeypatch, capsys) -> None:
