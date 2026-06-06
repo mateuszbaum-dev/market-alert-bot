@@ -167,6 +167,69 @@ def test_use_ai_false_rule_based_alert_can_still_be_sent(tmp_path, monkeypatch) 
     assert "Direction:" not in sent_messages[0]
 
 
+def test_force_notify_sends_when_gpt_should_notify_false(tmp_path, monkeypatch, capsys) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("USE_AI", "true")
+    monkeypatch.setenv("AI_THRESHOLD", "4")
+    monkeypatch.setenv("FORCE_NOTIFY", "true")
+    _set_storage(monkeypatch, was_sent=False)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
+    monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: _gpt_result(direction="BEARISH", should_notify=False))
+    sent_messages = []
+    monkeypatch.setattr(main_module, "send_telegram_message", lambda message: sent_messages.append(message) or True)
+
+    stats = main_module.run_pipeline()
+
+    captured = capsys.readouterr()
+    assert stats["alerts_sent"] == 1
+    assert len(sent_messages) == 1
+    assert "Direction: \U0001f534 BEARISH" in sent_messages[0]
+    assert "FORCE_NOTIFY enabled: sending alert for testing." in captured.out
+
+
+def test_force_notify_false_keeps_normal_gpt_should_notify_behavior(tmp_path, monkeypatch) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("USE_AI", "true")
+    monkeypatch.setenv("AI_THRESHOLD", "4")
+    monkeypatch.setenv("FORCE_NOTIFY", "false")
+    _set_storage(monkeypatch, was_sent=False)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    monkeypatch.setattr(main_module, "score_event", lambda event: _rule_score(score=6, level="HIGH"))
+    monkeypatch.setattr(main_module, "classify_event_with_gpt", lambda event, score: _gpt_result(should_notify=False))
+    sent_messages = []
+    monkeypatch.setattr(main_module, "send_telegram_message", lambda message: sent_messages.append(message) or True)
+
+    stats = main_module.run_pipeline()
+
+    assert stats["alerts_sent"] == 0
+    assert stats["alerts_skipped"] == 1
+    assert sent_messages == []
+
+
+def test_force_notify_still_skips_duplicates(tmp_path, monkeypatch) -> None:
+    _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
+    monkeypatch.setenv("DRY_RUN", "false")
+    monkeypatch.setenv("USE_AI", "true")
+    monkeypatch.setenv("FORCE_NOTIFY", "true")
+    _set_storage(monkeypatch, was_sent=True)
+    monkeypatch.setattr(main_module, "fetch_company_news", lambda symbol, days_back: [_event(symbol)])
+    score_calls = []
+    send_calls = []
+    monkeypatch.setattr(main_module, "score_event", lambda event: score_calls.append(event) or _rule_score(score=6, level="HIGH"))
+    monkeypatch.setattr(main_module, "send_telegram_message", lambda message: send_calls.append(message) or True)
+
+    stats = main_module.run_pipeline()
+
+    assert stats["skipped_duplicates"] == 1
+    assert stats["alerts_sent"] == 0
+    assert stats["alerts"] == 0
+    assert score_calls == []
+    assert send_calls == []
+
+
 def test_telegram_send_success_marks_alert_as_sent(tmp_path, monkeypatch) -> None:
     _set_watchlist(tmp_path, monkeypatch, ["AAPL"])
     monkeypatch.setenv("DRY_RUN", "false")
@@ -275,7 +338,7 @@ def _rule_score(score: int, level: str) -> dict:
     return {"score": score, "level": level, "reasons": ["Test reason"]}
 
 
-def _gpt_result(direction: str = "UNCLEAR") -> dict:
+def _gpt_result(direction: str = "UNCLEAR", should_notify: bool = True) -> dict:
     return {
         "impact_level": "HIGH",
         "impact_score": 7,
@@ -284,5 +347,5 @@ def _gpt_result(direction: str = "UNCLEAR") -> dict:
         "event_probability": 50,
         "category": "test",
         "reasoning_summary": "Test GPT result.",
-        "should_notify": True,
+        "should_notify": should_notify,
     }

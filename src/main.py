@@ -25,6 +25,7 @@ class PipelineSettings:
     min_score_to_notify: int
     max_gpt_calls_per_run: int
     dry_run: bool
+    force_notify: bool
 
 
 def load_pipeline_settings() -> PipelineSettings:
@@ -36,6 +37,7 @@ def load_pipeline_settings() -> PipelineSettings:
         min_score_to_notify=_env_int("MIN_SCORE_TO_NOTIFY", default=6),
         max_gpt_calls_per_run=_env_int("MAX_GPT_CALLS_PER_RUN", default=10),
         dry_run=_env_bool("DRY_RUN", default=True),
+        force_notify=_env_bool("FORCE_NOTIFY", default=False),
     )
 
 
@@ -92,6 +94,9 @@ def run_pipeline() -> dict[str, int]:
                     stats["alerts_skipped"] += 1
                     continue
 
+                if settings.force_notify:
+                    _log("FORCE_NOTIFY enabled: sending alert for testing.")
+
                 message = format_market_alert(event, rule_score, gpt_result)
                 if settings.dry_run:
                     _log(message)
@@ -141,6 +146,8 @@ def _gpt_would_qualify(settings: PipelineSettings, rule_score: dict[str, Any]) -
 
 
 def _should_notify(settings: PipelineSettings, rule_score: dict[str, Any], gpt_result: dict | None) -> bool:
+    if settings.force_notify:
+        return True
     if settings.use_ai:
         return bool(gpt_result and gpt_result.get("should_notify", False))
     if gpt_result is not None:
