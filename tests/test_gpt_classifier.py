@@ -47,41 +47,115 @@ def test_successful_valid_gpt_response_with_all_new_fields(monkeypatch) -> None:
     }
 
 
-def test_invalid_impact_score_returns_fallback(monkeypatch, capsys) -> None:
+def test_direction_confidence_percent_string_becomes_int(monkeypatch, capsys) -> None:
     payload = _valid_payload()
-    payload["impact_score"] = 11
+    payload["direction_confidence"] = "75%"
     _mock_openai(monkeypatch, payload)
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
 
-    assert result == _fallback(score_level="HIGH", impact_score=6, event_probability=50, should_notify=True)
+    assert result["direction_confidence"] == 75
+    assert result["category"] == "earnings"
     captured = capsys.readouterr()
-    assert "symbol=AAPL event_id=event-1" in captured.out
-    assert "invalid impact_score range" in captured.out
+    assert "GPT classification fallback" not in captured.out
 
 
-def test_invalid_direction_confidence_returns_fallback(monkeypatch, capsys) -> None:
+def test_direction_confidence_decimal_becomes_percent(monkeypatch, capsys) -> None:
     payload = _valid_payload()
-    payload["direction_confidence"] = -1
+    payload["direction_confidence"] = 0.75
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result["direction_confidence"] == 75
+    captured = capsys.readouterr()
+    assert "GPT classification fallback" not in captured.out
+
+
+def test_direction_confidence_about_string_becomes_int(monkeypatch, capsys) -> None:
+    payload = _valid_payload()
+    payload["direction_confidence"] = "about 60"
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result["direction_confidence"] == 60
+    captured = capsys.readouterr()
+    assert "GPT classification fallback" not in captured.out
+
+
+def test_direction_confidence_above_range_is_clamped(monkeypatch, capsys) -> None:
+    payload = _valid_payload()
+    payload["direction_confidence"] = 150
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result["direction_confidence"] == 100
+    captured = capsys.readouterr()
+    assert "GPT classification fallback" not in captured.out
+
+
+def test_impact_score_fraction_string_becomes_int(monkeypatch, capsys) -> None:
+    payload = _valid_payload()
+    payload["impact_score"] = "8/10"
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result["impact_score"] == 8
+    captured = capsys.readouterr()
+    assert "GPT classification fallback" not in captured.out
+
+
+def test_event_probability_percent_string_becomes_int(monkeypatch, capsys) -> None:
+    payload = _valid_payload()
+    payload["event_probability"] = "45%"
+    _mock_openai(monkeypatch, payload)
+
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
+
+    assert result["event_probability"] == 45
+    captured = capsys.readouterr()
+    assert "GPT classification fallback" not in captured.out
+
+
+def test_invalid_numeric_field_uses_default_without_fallback(monkeypatch, capsys) -> None:
+    payload = _valid_payload()
+    payload["impact_score"] = "not sure"
+    payload["direction_confidence"] = ""
+    payload["event_probability"] = None
     _mock_openai(monkeypatch, payload)
 
     result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=5, level="MEDIUM"))
 
-    assert result == _fallback(score_level="MEDIUM", impact_score=4, event_probability=35, should_notify=False)
+    assert result["impact_score"] == 4
+    assert result["direction_confidence"] == 40
+    assert result["event_probability"] == 35
+    assert result["category"] == "earnings"
     captured = capsys.readouterr()
-    assert "invalid direction_confidence range" in captured.out
+    assert "GPT classification fallback" not in captured.out
 
 
-def test_invalid_event_probability_returns_fallback(monkeypatch, capsys) -> None:
+def test_valid_gpt_response_with_numeric_strings_does_not_fallback(monkeypatch, capsys) -> None:
     payload = _valid_payload()
-    payload["event_probability"] = 101
+    payload["impact_level"] = "medium"
+    payload["impact_score"] = "8"
+    payload["direction_confidence"] = "75%"
+    payload["event_probability"] = "0.45"
+    payload["should_notify"] = "true"
     _mock_openai(monkeypatch, payload)
 
-    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=2, level="LOW"))
+    result = gpt_classifier.classify_event_with_gpt(_event(), _rule_score(score=7, level="HIGH"))
 
-    assert result == _fallback(score_level="LOW", impact_score=2, event_probability=20, should_notify=False)
+    assert result["impact_level"] == "MEDIUM"
+    assert result["impact_score"] == 8
+    assert result["direction_confidence"] == 75
+    assert result["event_probability"] == 45
+    assert result["should_notify"] is True
+    assert result["category"] == "earnings"
     captured = capsys.readouterr()
-    assert "invalid event_probability range" in captured.out
+    assert "GPT classification fallback" not in captured.out
 
 
 def test_normalize_market_direction_lowercase_bullish() -> None:

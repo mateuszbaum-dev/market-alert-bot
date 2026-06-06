@@ -66,7 +66,7 @@ def classify_event_with_gpt(event: MarketEvent, rule_score: dict) -> GptClassifi
             payload = json.loads(content)
         except json.JSONDecodeError as exc:
             raise ValueError("Invalid JSON response from GPT classifier") from exc
-        return _validate_classification(payload)
+        return _validate_classification(payload, rule_score)
     except Exception as exc:
         _log_fallback_reason(event, exc)
         return fallback_classification(rule_score)
@@ -84,22 +84,38 @@ def _compact_event_payload(event: MarketEvent, rule_score: dict) -> dict[str, An
     }
 
 
-def _validate_classification(payload: Any) -> GptClassification:
+def _validate_classification(payload: Any, rule_score: dict) -> GptClassification:
     if not isinstance(payload, dict):
         raise ValueError("GPT classification must be a JSON object")
 
-    impact_level = _required_choice(payload, "impact_level", VALID_IMPACT_LEVELS)
+    rule_score_value = _rule_score_value(rule_score)
+    impact_level = _normalize_impact_level(payload.get("impact_level"), rule_score)
     market_direction = normalize_market_direction(payload.get("market_direction"))
 
     return {
         "impact_level": impact_level,  # type: ignore[typeddict-item]
-        "impact_score": _required_int(payload, "impact_score", minimum=1, maximum=10),
+        "impact_score": normalize_int_field(
+            payload.get("impact_score"),
+            min_value=1,
+            max_value=10,
+            default=_fallback_impact_score(rule_score_value),
+        ),
         "market_direction": market_direction,  # type: ignore[typeddict-item]
-        "direction_confidence": _required_int(payload, "direction_confidence", minimum=0, maximum=100),
-        "event_probability": _required_int(payload, "event_probability", minimum=0, maximum=100),
+        "direction_confidence": normalize_int_field(
+            payload.get("direction_confidence"),
+            min_value=0,
+            max_value=100,
+            default=40,
+        ),
+        "event_probability": normalize_int_field(
+            payload.get("event_probability"),
+            min_value=0,
+            max_value=100,
+            default=_fallback_event_probability(rule_score_value),
+        ),
         "category": _required_text(payload, "category"),
         "reasoning_summary": _required_text(payload, "reasoning_summary"),
-        "should_notify": _required_bool(payload, "should_notify"),
+        "should_notify": _normalize_should_notify(payload.get("should_notify"), default=rule_score_value >= 6),
     }
 
 
@@ -137,24 +153,58 @@ def normalize_market_direction(value: Any) -> str:
     return "UNCLEAR"
 
 
-def _required_choice(payload: dict[str, Any], key: str, valid_values: set[str]) -> str:
-    if key not in payload:
-        raise ValueError(f"Missing required GPT field: {key}")
-    value = str(payload[key]).upper()
-    if value not in valid_values:
-        raise ValueError(f"Invalid GPT field value: {key}")
-    return value
+def normalize_int_field(value: Any, min_value: int, max_value: int, default: int) -> int:
+    number = _parse_number(value)
+    if number is None:
+        return default
+    if max_value == 100 and 0 <= number <= 1:
+        number *= 100
+    normalized = int(round(number))
+    if normalized < min_value:
+        return min_value
+    if normalized > max_value:
+        return max_value
+    return normalized
 
 
-def _required_int(payload: dict[str, Any], key: str, minimum: int, maximum: int) -> int:
-    if key not in payload:
-        raise ValueError(f"Missing required GPT field: {key}")
-    if isinstance(payload[key], bool) or not isinstance(payload[key], int):
-        raise ValueError(f"Invalid GPT integer field: {key}")
-    value = payload[key]
-    if value < minimum or value > maximum:
-        raise ValueError(f"Invalid GPT field range: {key} must be between {minimum} and {maximum}")
-    return value
+def _parse_number(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+    match = re.search(r"-?\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _normalize_impact_level(value: Any, rule_score: dict) -> str:
+    if isinstance(value, str):
+        level = value.strip().upper()
+        if level in VALID_IMPACT_LEVELS:
+            return level
+    return _rule_level(rule_score)
+
+
+def _normalize_should_notify(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text == "true":
+            return True
+        if text == "false":
+            return False
+    return default
 
 
 def _required_text(payload: dict[str, Any], key: str) -> str:
@@ -164,12 +214,6 @@ def _required_text(payload: dict[str, Any], key: str) -> str:
     if not value:
         raise ValueError(f"Empty GPT text field: {key}")
     return value
-
-
-def _required_bool(payload: dict[str, Any], key: str) -> bool:
-    if key not in payload or not isinstance(payload[key], bool):
-        raise ValueError(f"Missing or invalid GPT boolean field: {key}")
-    return payload[key]
 
 
 def _log_fallback_reason(event: MarketEvent, exc: Exception) -> None:
